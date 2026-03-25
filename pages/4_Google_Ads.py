@@ -2,52 +2,48 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from google.cloud import bigquery
-from google.oauth2 import service_account
 from utils import get_client, render_sidebar
 
-PROJECT = "the-brain-487614"
-
-#--- SIDEBAR (always first) ---
-render_sidebar()
-client = get_client() 
-
-def run_query(sql):
-    return get_client().query(sql).to_dataframe()
-
-# ── Page setup ────────────────────────────────────────────────
+# --- PAGE SETUP ---
 st.set_page_config(page_title="Google Ads Performance", page_icon="📊", layout="wide")
+
+# --- SIDEBAR (always first) ---
+render_sidebar()
+
+# --- CLIENT ---
+client = get_client()
+
 st.title("📊 Google Ads Performance")
 st.caption("Source: BigQuery · analytics.google_ads_campaign_performance · Auto-refreshes daily")
 
-# ── Load data ─────────────────────────────────────────────────
+# --- LOAD DATA ---
 @st.cache_data(ttl=3600)
 def load_data():
-    return run_query("""
+    return client.query("""
         SELECT *
         FROM `the-brain-487614.analytics.google_ads_campaign_performance`
         ORDER BY date DESC
-    """)
+    """).to_dataframe()
 
 df = load_data()
 
-# fix types
-df["date"]        = pd.to_datetime(df["date"])
-df["cost_usd"]    = pd.to_numeric(df["cost_usd"],    errors="coerce").fillna(0)
-df["clicks"]      = pd.to_numeric(df["clicks"],      errors="coerce").fillna(0)
-df["impressions"] = pd.to_numeric(df["impressions"], errors="coerce").fillna(0)
-df["conversions"] = pd.to_numeric(df["conversions"], errors="coerce").fillna(0)
-df["ctr_pct"]     = pd.to_numeric(df["ctr_pct"],     errors="coerce").fillna(0)
+# --- FIX TYPES ---
+df["date"]                = pd.to_datetime(df["date"])
+df["cost_usd"]            = pd.to_numeric(df["cost_usd"],            errors="coerce").fillna(0)
+df["clicks"]              = pd.to_numeric(df["clicks"],              errors="coerce").fillna(0)
+df["impressions"]         = pd.to_numeric(df["impressions"],         errors="coerce").fillna(0)
+df["conversions"]         = pd.to_numeric(df["conversions"],         errors="coerce").fillna(0)
+df["ctr_pct"]             = pd.to_numeric(df["ctr_pct"],             errors="coerce").fillna(0)
 df["cost_per_conversion"] = pd.to_numeric(df["cost_per_conversion"], errors="coerce")
 
-# ── Sidebar filters ───────────────────────────────────────────
-with st.sidebar:
-    st.header("Filters")
-    devices    = ["All"] + sorted(df["device"].dropna().unique().tolist())
-    sel_device = st.selectbox("Device", devices)
-    date_min   = df["date"].min().date()
-    date_max   = df["date"].max().date()
-    sel_dates  = st.date_input("Date range", value=(date_min, date_max))
+# --- SIDEBAR FILTERS ---
+st.sidebar.markdown("---")
+st.sidebar.header("Filters")
+devices   = ["All"] + sorted(df["device"].dropna().unique().tolist())
+sel_device = st.sidebar.selectbox("Device", devices)
+date_min  = df["date"].min().date()
+date_max  = df["date"].max().date()
+sel_dates = st.sidebar.date_input("Date range", value=(date_min, date_max))
 
 fdf = df.copy()
 if sel_device != "All":
@@ -58,11 +54,11 @@ if len(sel_dates) == 2:
         (fdf["date"].dt.date <= sel_dates[1])
     ]
 
-# ── KPI cards ─────────────────────────────────────────────────
-total_spend       = fdf["cost_usd"].sum()
-total_clicks      = fdf["clicks"].sum()
-total_impressions = fdf["impressions"].sum()
-total_conversions = fdf["conversions"].sum()
+# --- KPI CARDS ---
+total_spend       = float(fdf["cost_usd"].sum())
+total_clicks      = float(fdf["clicks"].sum())
+total_impressions = float(fdf["impressions"].sum())
+total_conversions = float(fdf["conversions"].sum())
 avg_ctr           = (total_clicks / total_impressions * 100) if total_impressions > 0 else 0
 avg_cpa           = (total_spend / total_conversions) if total_conversions > 0 else 0
 
@@ -76,7 +72,7 @@ k6.metric("Cost / Conversion", f"${avg_cpa:.2f}" if total_conversions > 0 else "
 
 st.divider()
 
-# ── Daily spend vs clicks ─────────────────────────────────────
+# --- DAILY SPEND VS CLICKS ---
 daily = (
     fdf.groupby("date")
     .agg(cost_usd=("cost_usd","sum"), clicks=("clicks","sum"),
@@ -99,13 +95,11 @@ fig1.update_layout(
 )
 st.plotly_chart(fig1, use_container_width=True)
 
-# ── Device breakdown + conversions ───────────────────────────
+# --- DEVICE BREAKDOWN + CONVERSIONS ---
 c1, c2 = st.columns(2)
-
 with c1:
     dev = fdf.groupby("device").agg(cost_usd=("cost_usd","sum")).reset_index()
-    fig2 = px.bar(dev, x="device", y="cost_usd",
-                  title="Spend by Device",
+    fig2 = px.bar(dev, x="device", y="cost_usd", title="Spend by Device",
                   color_discrete_sequence=["#378ADD"])
     fig2.update_layout(height=320, margin=dict(t=40,b=20),
                        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
@@ -124,7 +118,7 @@ with c2:
 
 st.divider()
 
-# ── CTR by day of week ────────────────────────────────────────
+# --- CTR BY DAY OF WEEK ---
 dow_order = ["MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY","SATURDAY","SUNDAY"]
 dow = (
     fdf.groupby("day_of_week")
@@ -144,7 +138,7 @@ st.plotly_chart(fig4, use_container_width=True)
 
 st.divider()
 
-# ── Raw data ──────────────────────────────────────────────────
+# --- RAW DATA ---
 with st.expander("View raw data"):
     st.dataframe(
         fdf.sort_values("date", ascending=False),
