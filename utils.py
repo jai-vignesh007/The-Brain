@@ -6,15 +6,11 @@ PROJECT_ID = "the-brain-487614"
 
 @st.cache_resource
 def get_client():
-    try:
-        if "gcp_service_account" in st.secrets:
-            credentials = service_account.Credentials.from_service_account_info(
-                dict(st.secrets["gcp_service_account"])
-            )
-            return bigquery.Client(project=PROJECT_ID, credentials=credentials)
-    except Exception:
-        pass
-    return bigquery.Client(project=PROJECT_ID)
+    creds = service_account.Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"],
+        scopes=["https://www.googleapis.com/auth/bigquery"]
+    )
+    return bigquery.Client(project=PROJECT_ID, credentials=creds)
 
 
 def apply_global_css():
