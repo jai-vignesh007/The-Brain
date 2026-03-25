@@ -5,3 +5,4 @@ pandas>=2.0.0
 plotly>=5.18.0
 pyarrow>=14.0.0
 db-dtypes>=1.1.1
+altair>=5.0.0
