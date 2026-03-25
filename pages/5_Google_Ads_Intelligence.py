@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from google.cloud import bigquery
+from utils import get_client, render_sidebar
 
 PROJECT = "the-brain-487614"
 client  = bigquery.Client(project=PROJECT)
